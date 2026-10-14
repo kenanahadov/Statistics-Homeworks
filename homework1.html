@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Homework 1 — Toy elliptic-curve scalar multiplication</title>
+<style>
+*{box-sizing:border-box}body{margin:0;color:#20252b;background:#fff;font:16px/1.65 system-ui,Arial,sans-serif}main{max-width:860px;margin:auto;padding:36px 22px 60px}header{border-bottom:2px solid #255d78;padding-bottom:20px}h1{font-size:1.85rem;line-height:1.25;margin:8px 0 12px}h2{font-size:1.25rem;margin:30px 0 10px}h3{font-size:1rem;margin:20px 0 8px}p{margin:10px 0}.meta,small{color:#58636d}.formula,.result{background:#f1f5f7;border-left:3px solid #255d78;padding:12px 16px}.result{font-weight:650}label{font-weight:600}input,button{font:inherit;padding:7px 12px;border:1px solid #aab6bd;border-radius:3px}input{width:95px}button{background:#255d78;color:white;cursor:pointer}button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid #db9b36;outline-offset:3px}form{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0}table{border-collapse:collapse;width:100%;margin:12px 0;font-size:.94rem}th,td{padding:7px 10px;border-bottom:1px solid #dce2e6;text-align:left}th{background:#f1f5f7}caption{text-align:left;font-weight:600;margin-bottom:6px}.scroll{overflow-x:auto}pre{background:#f5f6f7;padding:14px;overflow:auto;font-size:.83rem;line-height:1.7}code{font-family:Consolas,monospace}a{color:#225c7a}summary{cursor:pointer;color:#225c7a;font-weight:600}.cols{display:grid;grid-template-columns:1fr 1fr;gap:24px}.error{color:#a12020}footer{border-top:1px solid #dce2e6;margin-top:30px;padding-top:12px;font-size:.85rem;color:#58636d}@media(max-width:560px){main{padding:22px 16px}.cols{grid-template-columns:1fr;gap:0}h1{font-size:1.55rem}th,td{padding:6px} }@media print{main{max-width:none;padding:0}form,details{display:none}h2,h3{break-after:avoid}table{break-inside:avoid}}
+.plot{display:block;width:100%;max-width:580px;margin:12px auto;background:#fafcfd;border:1px solid #dce2e6}.legend{display:flex;gap:18px;flex-wrap:wrap;font-size:.9rem}.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;background:var(--dot)}.playback{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.playback input{width:180px}button.secondary{background:white;color:#255d78}button:disabled{opacity:.5;cursor:default}</style>
+</head>
+<body><main>
+<header><div class="meta">Statistics · Homework 1 · Kanan Ahadzade</div>
+<h1>From a private key to a public key</h1>
+<p>A small JavaScript experiment with elliptic-curve scalar multiplication and the statistical properties of its outputs.</p></header>
+<section>
+<h2>1. Aim and method</h2>
+<p>The aim is to calculate a toy public point <strong>Q = kG</strong> from a private scalar <strong>k</strong>. Multiplication here means repeated elliptic-curve point addition, rather than ordinary multiplication of coordinates.</p>
+<p class="formula">Curve: y² ≡ x³ + 7 (mod 17)<br>Base point: G = (1, 5)<br>Example private scalar: k = 6</p>
+<p>All coordinates and arithmetic are modulo 17. The base point is valid because 5² mod 17 = 8 and (1³ + 7) mod 17 = 8. The symbol O denotes the point at infinity, which acts as the identity: O + P = P.</p>
+<details><summary>Point-addition rules and the small core algorithm</summary>
+<p>For different points P = (x₁, y₁) and R = (x₂, y₂), the slope is λ = (y₂ − y₁)(x₂ − x₁)⁻¹ mod 17. For doubling, λ = 3x₁²(2y₁)⁻¹ mod 17. Then x₃ = λ² − x₁ − x₂ and y₃ = λ(x₁ − x₃) − y₁, both modulo 17. Opposite points add to O.</p>
+<p>A modular inverse replaces ordinary division. For example, 10⁻¹ ≡ 12 because 10 × 12 ≡ 1 (mod 17). The following ten-line core handles valid points on this toy curve; the remaining JavaScript displays results and counts frequencies.</p>
+<pre><code id="core-code"></code></pre>
+</details>
+<form id="calculator"><label for="private-key">Private scalar k</label><input id="private-key" type="number" min="1" max="36" step="1" value="6" required><button type="submit">Calculate</button></form>
+<small>Choose 1–36 to inspect up to four cycles. The eight distinct finite public points correspond to k = 1,…,8.</small>
+<p id="error" class="error" role="alert"></p>
+<p id="result" class="result" aria-live="polite"></p>
+<h3>Points on the toy curve</h3>
+<svg id="curve-plot" class="plot" viewBox="0 0 440 420" role="img" aria-labelledby="plot-title plot-description"></svg>
+<div class="legend"><span style="--dot:#b8c3ca">All curve points</span><span style="--dot:#398178">Visited multiples</span><span style="--dot:#255d78">Current point</span></div>
+<p id="plot-status" aria-live="polite"></p>
+<div class="playback"><button id="play" type="button">Play steps</button><button id="show-all" type="button" class="secondary">Show all</button><label for="step-slider">Step</label><input id="step-slider" type="range" min="1" max="6" value="6"><output id="step-number" for="step-slider">6 / 6</output></div>
+<p><small>The dots are the finite solutions modulo 17. The graph updates when Calculate is pressed. Play steps shows one addition every 700 ms; the slider lets you inspect an individual step. O has no finite coordinates and is not plotted. This is a discrete point plot, not a continuous curve.</small></p>
+<details open><summary>Calculation steps: G, 2G, …, kG</summary><div class="scroll"><table><thead><tr><th scope="col">Multiple</th><th scope="col">Point</th></tr></thead><tbody id="steps"></tbody></table></div></details>
+</section>
+<section>
+<h2>2. Dataset: repeat the experiment</h2>
+<p>Each statistical unit is one scalar choice. The recorded variables are k, the x-coordinate and the y-coordinate of Q. I enumerate k = 1,…,9 to inspect one complete cycle. This is an exhaustive experiment, not a random sample.</p>
+<div class="scroll"><table><caption>One complete cycle</caption><thead><tr><th scope="col">k</th><th scope="col">Q = kG</th><th scope="col">x (5 bits)</th><th scope="col">y (5 bits)</th></tr></thead><tbody id="dataset"></tbody></table></div>
+<p>The first eight outputs are finite and distinct; 9G = O. Therefore G has order 9, and (k + 9)G = kG. For example, 10G = G. O has no finite x or y coordinates, so it is excluded from all coordinate and bit statistics below; their denominator is <strong>8</strong>.</p>
+<h2>3. From the dataset to frequency distributions</h2>
+<p>To obtain a distribution, equal coordinate values are grouped and counted. Absolute frequency is the count; relative frequency is count ÷ 8. These are discrete variables, so no continuous intervals or density estimate are needed.</p>
+<div class="cols"><div><table><caption>x-coordinate distribution</caption><thead><tr><th scope="col">Value</th><th scope="col">Count</th><th scope="col">Relative</th></tr></thead><tbody id="x-frequencies"></tbody></table></div><div><table><caption>y-coordinate distribution</caption><thead><tr><th scope="col">Value</th><th scope="col">Count</th><th scope="col">Relative</th></tr></thead><tbody id="y-frequencies"></tbody></table></div></div>
+<p>Only observed values are listed; all other values from 0 to 16 have frequency zero. The x-values 1, 2, 5 and 12 each occur twice (25%). Each observed y-value occurs once (12.5%). Opposite points share an x-coordinate, explaining its repeated values.</p>
+<p>If k is chosen uniformly from 1,…,8, each of the eight finite points has probability 1/8. This does <em>not</em> imply uniform coordinates over 0,…,16. Here the exhaustive relative frequencies equal those theoretical coordinate probabilities. A random sample would fluctuate around them.</p>
+<h3>Bit distribution</h3>
+<p>Each coordinate is encoded with five bits, including leading zeros. Bit b₄ is the most significant bit and b₀ the least significant.</p>
+<table><thead><tr><th scope="col">Bit</th><th scope="col">x: ones / 8</th><th scope="col">y: ones / 8</th></tr></thead><tbody id="bit-counts"></tbody></table>
+<p>Bit frequencies are not all 50%. The allowed coordinates and their encoding constrain them: for example, no observed x-coordinate reaches 16, so its b₄ bit is always zero. Bit balance alone is not a test of elliptic-curve security.</p>
+<h3>Input/output relationship</h3>
+<p id="correlations"></p>
+<p>Pearson correlation measures a linear numerical relationship. A zero or small value does not imply independence: Q is fully determined by k. The sequence also has the exact relation Q(k + 1) = Q(k) + G and repeats after nine steps.</p>
+<h3>A small input-bit-change experiment</h3>
+<p>Compare three pairs of valid scalars that differ in exactly one input bit. Encode each output as the 10-bit string x || y and count the changed bits (Hamming distance).</p>
+<table><thead><tr><th scope="col">Scalar pair</th><th scope="col">Public-point pair</th><th scope="col">Changed output bits</th></tr></thead><tbody id="changes"></tbody></table>
+<p id="change-summary"></p>
+<p>These three comparisons describe only this toy example. They do not establish an avalanche property. For an ideal hash-like mapping, flipping one input bit is expected to change about half the output bits on average; that is not a required criterion for elliptic-curve scalar multiplication.</p>
+</section>
+<section><h2>4. Interpretation and conclusion</h2>
+<p>The mapping is deterministic and easy to compute forward. On a suitably chosen large curve, recovering k from G and Q is believed computationally difficult because of the elliptic-curve discrete logarithm problem (ECDLP). Our tiny example is easy to reverse by listing the eight possible finite outputs.</p>
+<p>Scalar multiplication produces a curve point and preserves a group structure. A cryptographic hash instead produces a fixed-length digest from a message and aims for preimage, second-preimage and collision resistance. Collision resistance means that finding two distinct messages with the same digest is difficult; it does not mean collisions cannot exist.</p>
+<p>Coordinate frequencies, bit counts and input-change comparisons describe the chosen dataset. They do not prove one-wayness or security. Ethereum uses secp256k1 with much larger parameters. This program demonstrates the private-to-public-key relationship only; it is not a real Ethereum key generator, encryption system or hash function.</p>
+</section>
+
+<footer>Educational experiment · HTML, CSS and JavaScript · All calculations run locally in the browser.</footer>
+<noscript><p>Please enable JavaScript to display the calculations and statistical tables.</p></noscript>
+</main>
+<script id="ecc-core">
+const p = 17, G = [1, 5];
+const mod = n => ((n % p) + p) % p;
+const inverse = n => Array.from({length: p - 1}, (_, i) => i + 1).find(v => mod(n * v) === 1);
+function add(P, R) {
+  if (P === null) return R; if (R === null) return P;
+  const [x, y] = P, [u, v] = R;
+  if (x === u && mod(y + v) === 0) return null;
+  const slope = mod((x === u ? 3 * x * x : v - y) * inverse(x === u ? 2 * y : u - x));
+  const X = mod(slope * slope - x - u); return [X, mod(slope * (x - X) - y)]; }
+function multiples(k) { let Q = null; return Array.from({length: k}, () => (Q = add(Q, G))); }
+</script>
+<script>
+// Display and statistical calculations, separate from the core algorithm.
+const el = id => document.getElementById(id);
+const pointText = Q => Q === null ? 'O (point at infinity)' : `(${Q[0]}, ${Q[1]})`;
+const bits = n => n.toString(2).padStart(5, '0');
+const row = cells => '<tr>' + cells.map(value => `<td>${value}</td>`).join('') + '</tr>';
+let graphSequence = [], playback = null;
+function stopPlayback() {
+  if (playback !== null) clearInterval(playback);
+  playback = null; el('play').textContent = 'Play steps';
+}
+function drawGraph(step) {
+  const sequence = graphSequence.slice(0, step), Q = sequence[step - 1];
+  const px = x => 44 + 22 * x, py = y => 374 - 22 * y;
+  let svg = '<title id="plot-title">Toy elliptic curve over integers modulo 17</title><desc id="plot-description">Grey dots show all finite curve points; teal dots show visited multiples and a larger blue dot marks the current result.</desc>';
+  for (let i = 0; i <= 16; i++) {
+    svg += `<path d="M ${px(i)} 22 V 374 M 44 ${py(i)} H 396" stroke="#e1e7eb" fill="none"/>`;
+    if (i % 2 === 0) svg += `<text x="${px(i)}" y="396" text-anchor="middle" font-size="11">${i}</text><text x="33" y="${py(i) + 4}" text-anchor="end" font-size="11">${i}</text>`;
+  }
+  svg += '<text x="414" y="379" font-size="14">x</text><text x="40" y="14" font-size="14">y</text>';
+  const dot = (P, color, radius) => `<circle cx="${px(P[0])}" cy="${py(P[1])}" r="${radius}" fill="${color}" stroke="white" stroke-width="1.5"><title>${pointText(P)}</title></circle>`;
+  for (let x = 0; x < p; x++) for (let y = 0; y < p; y++) if (mod(y * y - x ** 3 - 7) === 0) svg += dot([x, y], '#b8c3ca', 4.5);
+  const visited = new Set();
+  sequence.forEach(P => { if (P && !visited.has(P.join(','))) { visited.add(P.join(',')); svg += dot(P, '#398178', 6); } });
+  if (Q) svg += dot(Q, '#255d78', 8) + `<text x="${px(Q[0]) + 11}" y="${py(Q[1]) + (Q[1] >= 15 ? 16 : -10)}" fill="#255d78" font-size="12" font-weight="bold">${step}G</text>`;
+  el('curve-plot').innerHTML = svg;
+  el('plot-status').textContent = `Step ${step}: ${step}G = ${pointText(Q)}` + (Q === null ? '. The identity has no dot on this plot.' : '');
+  el('step-slider').value = step;
+  el('step-number').textContent = `${step} / ${graphSequence.length}`;
+}
+function calculate(event) {
+  if (event) event.preventDefault();
+  const input = el('private-key').value, k = Number(input);
+  if (!input.trim() || !Number.isInteger(k) || k < 1 || k > 36) {
+    el('error').textContent = 'Please enter a whole number from 1 to 36.'; return;
+  }
+  el('error').textContent = '';
+  stopPlayback();
+  const sequence = multiples(k), Q = sequence[k - 1];
+  graphSequence = sequence; el('step-slider').max = k; drawGraph(k);
+  el('steps').innerHTML = sequence.map((point, i) => row([`${i + 1}G`, pointText(point)])).join('');
+  el('result').textContent = `TOY PUBLIC KEY: ${k}G = ${pointText(Q)}` + (Q === null ? '. This is the identity, not a usable public key.' : '');
+}
+const cycle = multiples(9), finite = cycle.filter(Q => Q !== null);
+el('dataset').innerHTML = cycle.map((Q, i) => row([i + 1, pointText(Q), Q ? bits(Q[0]) : '—', Q ? bits(Q[1]) : '—'])).join('');
+function frequencyTable(coordinate, target) {
+  const counts = Array(17).fill(0);
+  finite.forEach(Q => counts[Q[coordinate]]++);
+  el(target).innerHTML = counts.map((count, value) => count ? row([value, count, `${100 * count / finite.length}%`]) : '').join('');
+}
+frequencyTable(0, 'x-frequencies'); frequencyTable(1, 'y-frequencies');
+el('bit-counts').innerHTML = [4, 3, 2, 1, 0].map(b => {
+  const ones = c => finite.reduce((sum, Q) => sum + ((Q[c] >> b) & 1), 0);
+  return row([`b${b}`, `${ones(0)}/8 (${100 * ones(0) / 8}%)`, `${ones(1)}/8 (${100 * ones(1) / 8}%)`]);
+}).join('');
+function correlation(a, b) {
+  const mean = values => values.reduce((sum, value) => sum + value, 0) / values.length;
+  const A = a.map(v => v - mean(a)), B = b.map(v => v - mean(b));
+  const dot = (x, y) => x.reduce((sum, v, i) => sum + v * y[i], 0);
+  return dot(A, B) / Math.sqrt(dot(A, A) * dot(B, B));
+}
+const keys = finite.map((_, i) => i + 1);
+el('correlations').textContent = `Across k = 1,…,8, Pearson r(k, x) = ${correlation(keys, finite.map(Q => Q[0])).toFixed(3)} and r(k, y) = ${correlation(keys, finite.map(Q => Q[1])).toFixed(3)}.`;
+const pairs = [[2, 3], [4, 5], [6, 7]];
+const distances = pairs.map(([a, b]) => {
+  const A = finite[a - 1].map(bits).join(''), B = finite[b - 1].map(bits).join('');
+  return [...A].filter((bit, i) => bit !== B[i]).length;
+});
+el('changes').innerHTML = pairs.map(([a, b], i) => row([`${a} → ${b}`, `${pointText(finite[a - 1])} → ${pointText(finite[b - 1])}`, `${distances[i]} / 10`])).join('');
+el('change-summary').textContent = `The mean is ${(distances.reduce((sum, n) => sum + n, 0) / distances.length).toFixed(2)} changed bits out of 10.`;
+el('core-code').textContent = el('ecc-core').textContent.trim();
+el('calculator').addEventListener('submit', calculate);
+el('step-slider').addEventListener('input', () => { stopPlayback(); drawGraph(Number(el('step-slider').value)); });
+el('show-all').addEventListener('click', () => { stopPlayback(); drawGraph(graphSequence.length); });
+el('play').addEventListener('click', () => {
+  if (playback !== null) { stopPlayback(); return; }
+  let step = 1; drawGraph(step);
+  if (graphSequence.length === 1) return;
+  el('play').textContent = 'Pause';
+  playback = setInterval(() => {
+    drawGraph(++step);
+    if (step === graphSequence.length) stopPlayback();
+  }, 700);
+});
+calculate();
+</script>
+</body></html>
