@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Homework 2 — Toy ECC and Caesar cryptanalysis</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;color:#20252b;background:#fff;font:16px/1.65 system-ui,Arial,sans-serif}
+main{max-width:860px;margin:auto;padding:36px 22px 60px}
+header{border-bottom:2px solid #255d78;padding-bottom:20px}
+h1{font-size:1.85rem;line-height:1.25;margin:8px 0 12px}
+h2{font-size:1.25rem;margin:30px 0 10px}
+h3{font-size:1rem;margin:20px 0 8px}
+p{margin:10px 0}
+.meta,small{color:#58636d}
+.formula{background:#f1f5f7;border-left:3px solid #255d78;padding:12px 16px}
+label{font-weight:600}
+input,button,textarea{font:inherit;padding:7px 12px;border:1px solid #aab6bd;border-radius:3px}
+input{width:95px}
+input.wide,textarea{width:100%}
+textarea{display:block;margin:8px 0 12px;resize:vertical}
+button{background:#255d78;color:white;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{
+outline:3px solid #db9b36;outline-offset:3px}
+form{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:.94rem}
+th,td{padding:7px 10px;border-bottom:1px solid #dce2e6;text-align:left;vertical-align:top}
+th{background:#f1f5f7}
+.scroll{overflow-x:auto}
+pre{background:#f5f6f7;padding:14px;overflow:auto;font-size:.83rem;line-height:1.7;
+white-space:pre-wrap;overflow-wrap:anywhere}
+a,summary{color:#225c7a}
+summary{cursor:pointer;font-weight:600}
+details{margin:12px 0}
+.error{color:#a12020}
+footer{border-top:1px solid #dce2e6;margin-top:30px;padding-top:12px;font-size:.85rem;color:#58636d}
+@media(max-width:560px){
+main{padding:22px 16px}h1{font-size:1.55rem}th,td{padding:6px}
+}
+@media print{
+main{max-width:none;padding:0}button,form{display:none}
+h2,h3{break-after:avoid}table{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+<div class="meta">Statistics · Homework 2: Encryption and cryptanalysis · Kanan Ahadzade</div>
+<h1>Toy ECC and the Caesar cipher</h1>
+<p>Encrypt the same message, compare the results, and recover keys using two different attacks.</p>
+</header>
+
+<section>
+<h2>1. ECC encryption and decryption</h2>
+<p>The earlier exercise used a curve modulo 17. This exercise uses the actual
+<strong>secp256k1</strong> curve, y² ≡ x³ + 7 (mod p), where
+p = 2²⁵⁶ − 2³² − 977, with its standard base point G and order n.
+Only the receiver's private key is restricted: <strong>1 ≤ d ≤ 1000</strong>.</p>
+
+<p>The receiver keeps d secret and publishes Q = dG. For each character, the
+sender chooses a fresh random scalar r from 1,…,n−1.
+The sender uses Q, not d.</p>
+
+<p class="formula">
+Encrypt: T = rG, E = M + rQ<br>
+Decrypt: M = E − dT<br>
+Because E − dT = M + r(dG) − d(rG) = M.
+</p>
+
+<p><strong>Reversible encoding:</strong> printable ASCII characters have codes
+a = 32,…,126. Encode each as M = (a − 31)G. These 95 points are distinct.
+After removing the mask, the receiver looks up M in the same public table
+to recover the character. No original plaintext is needed for decryption.
+A fresh r is used for every character; the ciphertext is the list of pairs (T,E).</p>
+
+<form id="demo">
+<label for="message">Message shared by both ciphers</label>
+<input id="message" class="wide" value="Meet me at the library at nine."
+maxlength="80" required>
+
+<label for="privateKey">ECC private key d</label>
+<input id="privateKey" type="number" min="1" max="1000" value="37" required>
+
+<label for="shift">Caesar key k</label>
+<input id="shift" type="number" min="0" max="25" value="3" required>
+
+<button type="submit">Encrypt and decrypt both</button>
+</form>
+
+<small>Use 1–80 printable ASCII characters. Run again to obtain fresh ECC
+ciphertext. Keys and intermediate values are shown for teaching only.</small>
+
+<p id="error" class="error" role="alert"></p>
+<pre id="eccOutput" aria-live="polite"></pre>
+
+<details>
+<summary>First-character calculation</summary>
+<pre id="firstStep"></pre>
+</details>
+
+<details>
+<summary>Complete ECC ciphertext (hexadecimal coordinates)</summary>
+<pre id="cipherPoints"></pre>
+</details>
+</section>
+
+<section>
+<h2>2. Caesar encryption and decryption</h2>
+<p>Number the letters A,…,Z as 0,…,25. Encrypt with c = (m + k) mod 26
+and decrypt with m = (c − k) mod 26. Both parties use the same secret key.
+This implementation preserves case, spaces and punctuation.</p>
+
+<pre id="caesarOutput" aria-live="polite"></pre>
+
+<h2>3. Comparison and statistical observations</h2>
+<table>
+<thead><tr><th>Property</th><th>Caesar</th><th>ECC demonstration</th></tr></thead>
+<tbody>
+<tr><td>Keys</td><td>One shared secret shift</td>
+<td>Private d, public Q; fresh sender scalar r</td></tr>
+<tr><td>Encryption</td><td>Add k to each letter index</td>
+<td>Add rQ to each message point; send rG too</td></tr>
+<tr><td>Decryption</td><td>Subtract k</td>
+<td>Subtract dT, then decode the point</td></tr>
+<tr><td>Receiver key space</td><td>26 shifts, including identity shift 0</td>
+<td>1000 keys here; n−1 ≈ 2²⁵⁶ for full-range secp256k1</td></tr>
+<tr><td>Repeated characters</td><td>Same letter gives the same letter</td>
+<td>Fresh randomness can give different point pairs</td></tr>
+<tr><td>Statistics</td><td>Letter counts are permuted by the shift</td>
+<td>No fixed substitution of plaintext letters into ciphertext letters</td></tr>
+</tbody>
+</table>
+
+<p id="repeatObservation"></p>
+
+<p>Each letter occurrence is an observation; its letter is the variable.
+Counting equal letters produces an absolute-frequency distribution.
+Relative frequency is count divided by the number of letters.
+The table excludes spaces and punctuation and combines letter case.</p>
+
+<details>
+<summary>Reference, plaintext and Caesar letter frequencies</summary>
+<div class="scroll">
+<table>
+<thead><tr>
+<th>Letter</th><th>English reference</th>
+<th>Plain count</th><th>Plain %</th>
+<th>Cipher count</th><th>Cipher %</th>
+</tr></thead>
+<tbody id="frequencies"></tbody>
+</table>
+</div>
+</details>
+
+<p>The ECC output consists of curve points, so comparing it directly with an
+A–Z histogram would use different kinds of observations. Fresh randomness removes
+Caesar's fixed letter substitution, but does not prove uniform ciphertext,
+independence or an avalanche property. Curve coordinates obey the curve equation.
+A random-looking output also does not make a small private-key range secure.</p>
+</section>
+
+<section>
+<h2>4. Statistical attack on Caesar</h2>
+<p>The English reference uses Peter Norvig's published letter frequencies from
+a filtered Google Books corpus containing about 3.56 trillion letter occurrences.
+The rounded percentages are normalized to sum to one. These are corpus estimates,
+not universal language constants.
+<a href="https://norvig.com/mayzner.html">Reference data and method</a>.</p>
+
+<p>For each candidate shift k, rotate the observed counts back and compare them
+with the expected English counts. Choose the smallest score:</p>
+
+<p class="formula">χ²(k) = Σ (Oⱼ(k) − Nfⱼ)² / (Nfⱼ), for j = A,…,Z.</p>
+
+<p>N is the number of ciphertext letters; fⱼ is the reference frequency;
+Oⱼ(k) is the candidate plaintext count. This uses all 26 letters instead of
+assuming the most common one is E. Counting takes O(N) work; scoring needs only
+26 × 26 terms. Here χ² is a ranking score, not a significance test or a guarantee
+of the correct key. Exact ties select the smaller shift.</p>
+
+<label for="cipherInput">Ciphertext to attack</label>
+<textarea id="cipherInput" rows="3"></textarea>
+<button id="attackCaesar" type="button">Recover Caesar key</button>
+
+<pre id="caesarAttack" aria-live="polite"></pre>
+
+<details>
+<summary>Scores for all 26 candidate shifts</summary>
+<table>
+<thead><tr><th>Key</th><th>χ² score (lower is better)</th></tr></thead>
+<tbody id="scores"></tbody>
+</table>
+</details>
+
+<h3>Tests at different lengths</h3>
+<p>For each length, encrypt 100 sampled passages with shifts from 0,…,25 and
+compare the estimated key with the true key. The attack receives only ciphertext.
+Length counts A–Z letters. The test material is five synthetic English paragraphs
+created for this demonstration, separate from the published reference data.
+Windows can overlap.</p>
+
+<p>The experiment uses seed 20261020 to make results reproducible.
+This seeded generator is used only for experiments; ECC encryption uses
+the browser's cryptographic random generator.</p>
+
+<button id="runLengths" type="button">Repeat the same length tests</button>
+
+<table>
+<thead><tr>
+<th>Ciphertext letters</th><th>Correct keys / trials</th><th>Success rate</th>
+</tr></thead>
+<tbody id="lengthResults"></tbody>
+</table>
+
+<details>
+<summary>Read the complete test text</summary>
+<p id="testText"></p>
+</details>
+
+<p>In this experiment, recovery improves from 45/100 at five letters to 98/100
+at twenty; all 100 keys are recovered at each tested length of 50 letters or more.
+This does not guarantee success on other texts. Short samples, unusual vocabulary,
+a different language or a mismatched reference can produce the wrong shift.
+Overlapping passages and a small synthetic test text also limit how broadly these
+results apply. More letters often help, but success need not increase at every length.</p>
+</section>
+
+<section>
+<h2>5. Attack on the restricted ECC private key</h2>
+<p>An attacker knows G, Q and the range 1,…,1000. Start at G and repeatedly
+add G, checking G, 2G,… against Q. A match gives d exactly.
+Then decrypt the intercepted pairs using E − dT.
+The search uses neither the original private key nor the plaintext.</p>
+
+<button id="attackECC" type="button">Recover ECC key and decrypt</button>
+<pre id="eccAttack" aria-live="polite"></pre>
+
+<p>The search needs at most 1000 candidate checks, O(B) work for bound B,
+and constant working memory. Its success does not depend on the message language
+or length. Caesar's attack instead ranks candidates using language statistics
+and may choose incorrectly.</p>
+
+<p>For full-range secp256k1, exhaustive search has approximately 2²⁵⁶ candidates.
+Even generic square-root classical attacks require about 2¹²⁸ group operations,
+making this approach computationally infeasible in practice. A large field alone
+is insufficient: the private key must also be drawn from a sufficiently large,
+unpredictable range.</p>
+
+<p>This is an educational point-encryption scheme, not production encryption.
+Independently of the small key range, it has no authentication and is malleable.
+Reusing r would reveal differences between message points. It also reveals
+message length. Increasing d's range would not repair those design limitations.</p>
+
+<h2>6. Conclusion</h2>
+<p>Both schemes apply a reversible mask. Caesar preserves letter-frequency
+structure, allowing statistical key estimation. The ECC attack exploits the
+deliberately small private-key range and verifies guesses using the public key.
+These are different weaknesses: a useful statistical model identifies the Caesar
+shift, while an exact point comparison identifies the ECC key.</p>
+
+<p><small>Curve parameters:
+<a href="https://www.secg.org/sec2-v2.pdf">Standards for Efficient Cryptography 2
+(SEC 2), version 2, §2.4.1</a>.
+Encryption follows the point-based construction discussed in class.</small></p>
+</section>
+
+<footer>Educational experiment · HTML, CSS and JavaScript · Calculations run locally in the browser.</footer>
+<noscript>Please enable JavaScript to run the demonstrations.</noscript>
+</main>
+
+<script>
+"use strict";
+
+// secp256k1 parameters. BigInt keeps all arithmetic exact.
+const p = 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2fn;
+const n = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
+const G = [
+  0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798n,
+  0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8n
+];
+
+const mod = x => (x % p + p) % p;
+
+// Extended Euclidean algorithm.
+function inverse(x) {
+  let a = mod(x), b = p, u = 1n, v = 0n;
+  if (a === 0n) throw Error("Zero has no inverse.");
+  while (b) {
+    const q = a / b;
+    [a, b] = [b, a - q * b];
+    [u, v] = [v, u - q * v];
+  }
+  return mod(u);
+}
+
+// null represents the point at infinity.
+function add(A, B) {
+  if (!A) return B;
+  if (!B) return A;
+  const [x, y] = A, [u, v] = B;
+  if (x === u && mod(y + v) === 0n) return null;
+  const s = mod((x === u ? 3n*x*x : v-y) *
+                inverse(x === u ? 2n*y : u-x));
+  const X = mod(s*s-x-u);
+  return [X, mod(s*(x-X)-y)];
+}
+
+const negative = A => A ? [A[0], mod(-A[1])] : null;
+
+function multiply(k, A = G) {
+  let B = null;
+  while (k > 0n) {
+    if (k & 1n) B = add(B, A);
+    A = add(A, A);
+    k >>= 1n;
+  }
+  return B;
+}
+
+const pointID = A =>
+  A ? A.map(x => x.toString(16)).join(":") : "O";
+
+const same = (A, B) => pointID(A) === pointID(B);
+
+// Rejection sampling: fresh scalar in 1..n-1.
+function randomScalar() {
+  const bytes = new Uint8Array(32);
+  let r;
+  do {
+    crypto.getRandomValues(bytes);
+    r = BigInt("0x" + Array.from(
+      bytes, b => b.toString(16).padStart(2,"0")
+    ).join(""));
+  } while (r === 0n || r >= n);
+  return r;
+}
+
+// Public reversible table: ASCII 32..126 maps to G..95G.
+const encode = [], decode = new Map();
+let nextPoint = null;
+
+for (let a = 32; a <= 126; a++) {
+  nextPoint = add(nextPoint, G);
+  encode[a] = nextPoint;
+  decode.set(pointID(nextPoint), String.fromCharCode(a));
+}
+
+function encrypt(message, Q, random = randomScalar) {
+  return Array.from(message, ch => {
+    const M = encode[ch.charCodeAt(0)];
+    if (!M) throw Error("Use printable English/ASCII characters.");
+    const r = random();
+    return [multiply(r), add(M, multiply(r, Q))];
+  });
+}
+
+function decrypt(cipher, d) {
+  return cipher.map(([T, E]) => {
+    const M = add(E, negative(multiply(d, T)));
+    const ch = decode.get(pointID(M));
+    if (ch === undefined)
+      throw Error("Decryption produced an unknown message point.");
+    return ch;
+  }).join("");
+}
+
+// The attack receives only the public key and the range.
+function recoverPrivate(Q, bound = 1000) {
+  let candidate = null;
+  for (let d = 1; d <= bound; d++) {
+    candidate = add(candidate, G);
+    if (same(candidate, Q)) return d;
+  }
+  return null;
+}
+
+function caesar(text, shift) {
+  return text.replace(/[A-Za-z]/g, ch => {
+    const base = ch <= "Z" ? 65 : 97;
+    return String.fromCharCode(
+      base + ((ch.charCodeAt(0)-base+shift)%26+26)%26
+    );
+  });
+}
+
+const letters = text =>
+  text.toUpperCase().replace(/[^A-Z]/g, "");
+
+function counts(text) {
+  const c = Array(26).fill(0);
+  for (const ch of letters(text)) c[ch.charCodeAt(0)-65]++;
+  return c;
+}
+
+// Norvig's published percentages, A..Z, normalized for rounding.
+const weights = [
+  8.04,1.48,3.34,3.82,12.49,2.40,1.87,5.05,7.57,
+  .16,.54,4.07,2.51,7.23,7.64,2.14,.12,6.28,6.51,
+  9.28,2.73,1.05,1.68,.23,1.66,.09
+];
+
+const frequency = weights.map(
+  x => x / weights.reduce((a,b) => a+b,0)
+);
+
+function crack(text) {
+  const c = counts(text), N = c.reduce((a,b) => a+b,0);
+  if (!N)
+    throw Error("Enter ciphertext containing at least one English letter.");
+
+  const scores = Array.from({length:26}, (_, k) => {
+    let score = 0;
+    for (let j=0; j<26; j++) {
+      const expected = N*frequency[j];
+      score += (c[(j+k)%26]-expected)**2 / expected;
+    }
+    return {key:k, score};
+  }).sort((a,b) => a.score-b.score || a.key-b.key);
+
+  return {
+    key:scores[0].key,
+    text:caesar(text,-scores[0].key),
+    scores
+  };
+}
+
+// Synthetic test material, not used to estimate reference frequencies.
+const testText = [
+"The morning train arrived at the station before the rain began. Several passengers were waiting near the entrance with their bags and coats. A young woman asked the driver whether the next stop was close to the museum. He showed her the map and explained that she could walk there from the bridge. Across the road a small shop was opening for the day. The owner placed fresh bread in the window while his brother carried boxes into the kitchen. They expected a busy afternoon because the town was holding its annual market. Visitors would come from nearby villages to buy food and listen to music in the square.",
+"At the university the library remained quiet until the first lecture finished. Students then gathered around the large tables to compare their notes and plan the work for the following week. One group was preparing a report about public transport. They wanted to learn how often people used the bus and why some preferred to drive. Before collecting answers they discussed the questions and decided how to record each response. A clear question would make the answers easier to compare, but a large number of answers alone would not guarantee that the survey represented everyone in the city.",
+"Later that afternoon a teacher took her class to a garden behind the school. The children measured the height of several plants and wrote the results in their notebooks. Some plants had received more sunlight than others. The class could describe the differences they observed, but the teacher reminded them that other conditions might also matter. Water, soil and the age of each plant could affect its growth. They agreed to repeat their observations over the next month and to keep a careful record rather than relying on memory.",
+"When the weather improved, two friends followed the path beside the river. They passed a field, an old stone wall and a wooden gate leading to a farm. They had planned to reach the next village before sunset, but stopped to help a cyclist repair a loose wheel. The delay was small and the evening was still bright when they arrived. At a cafe they ordered tea and talked about their journey. Neither had visited the village before, so they asked the owner which road would take them back to the station.",
+"In the evening a family prepared dinner together. Someone washed the vegetables while another person set the table and checked the oven. Their conversation moved from the events of the day to plans for the weekend. They hoped to visit the coast if the weather stayed clear. Before leaving they would need to check the timetable, pack some food and arrange for a neighbour to feed the cat. After dinner they opened a book of photographs and tried to remember the names of places they had visited many years earlier."
+].join(" ");
+
+function lengthExperiment() {
+  const text = letters(testText), rows = [];
+  let seed = 20261020;
+
+  // Reproducible experiment generator; never used for ECC secrets.
+  function random() {
+    seed = (Math.imul(1664525, seed) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  }
+
+  for (const L of [5,10,20,50,100,200]) {
+    let success = 0;
+    for (let t=0; t<100; t++) {
+      const start = Math.floor(random()*(text.length-L+1));
+      const key = Math.floor(random()*26);
+      const cipher = caesar(text.slice(start,start+L),key);
+      if (crack(cipher).key === key) success++;
+    }
+    rows.push([L,success,100]);
+  }
+  return rows;
+}
+
+// Interface.
+const $ = id => document.getElementById(id);
+let state = null;
+
+const row = cells =>
+  "<tr>" + cells.map(x => "<td>"+x+"</td>").join("") + "</tr>";
+
+const showPoint = P => P ?
+  "(" + P.map(x => x.toString(16).padStart(64,"0")).join(", ") + ")" :
+  "O";
+
+function runDemo() {
+  $("error").textContent = "";
+  $("eccAttack").textContent = "";
+  $("attackECC").disabled = true;
+  state = null;
+
+  try {
+    const message = $("message").value;
+    const d = Number($("privateKey").value);
+    const k = Number($("shift").value);
+
+    if (!/^[\x20-\x7e]{1,80}$/.test(message))
+      throw Error("Enter 1–80 printable ASCII characters (English letters, digits, spaces or punctuation).");
+
+    if (!Number.isInteger(d) || d<1 || d>1000)
+      throw Error("The private key must be an integer from 1 to 1000.");
+
+    if ($("shift").value === "" || !Number.isInteger(k) || k<0 || k>25)
+      throw Error("The Caesar key must be an integer from 0 to 25.");
+
+    const Q = multiply(BigInt(d));
+    const cipher = encrypt(message,Q);
+    const recovered = decrypt(cipher,BigInt(d));
+    const ca = caesar(message,k);
+
+    // Only public data and ciphertext are retained for the attack.
+    state = {Q,cipher};
+
+    $("eccOutput").textContent =
+      "Public key Q (hex): "+showPoint(Q)+
+      "\n\nDecrypted: "+recovered+
+      "\nRound trip: "+(recovered===message?"PASS":"FAIL")+
+      "\nCiphertext: "+cipher.length+" point pairs.";
+
+    $("firstStep").textContent =
+      "First character "+JSON.stringify(message[0])+
+      ": ASCII "+message.charCodeAt(0)+
+      " → M = "+(message.charCodeAt(0)-31)+"G"+
+      "\nM = "+showPoint(encode[message.charCodeAt(0)])+
+      "\nT = "+showPoint(cipher[0][0])+
+      "\nE = "+showPoint(cipher[0][1])+
+      "\nE − dT = "+showPoint(
+        add(cipher[0][1],negative(multiply(BigInt(d),cipher[0][0])))
+      );
+
+    $("cipherPoints").textContent = cipher.map((pair,i)=>
+      (i+1)+". T = "+showPoint(pair[0])+
+      "\n   E = "+showPoint(pair[1])
+    ).join("\n");
+
+    $("caesarOutput").textContent =
+      "Ciphertext: "+ca+
+      "\nDecrypted: "+caesar(ca,-k)+
+      "\nRound trip: "+(caesar(ca,-k)===message?"PASS":"FAIL");
+
+    $("cipherInput").value = ca;
+
+    const a=counts(message), b=counts(ca);
+    const total=a.reduce((s,x)=>s+x,0);
+
+    $("frequencies").innerHTML = a.map((x,j)=>row([
+      String.fromCharCode(65+j),
+      (100*frequency[j]).toFixed(2)+"%",
+      x,
+      total?(100*x/total).toFixed(2)+"%":"—",
+      b[j],
+      total?(100*b[j]/total).toFixed(2)+"%":"—"
+    ])).join("");
+
+    const occurrences = new Map();
+    Array.from(message).forEach((ch,i)=>{
+      if(!occurrences.has(ch)) occurrences.set(ch,[]);
+      occurrences.get(ch).push(
+        pointID(cipher[i][0])+"|"+pointID(cipher[i][1])
+      );
+    });
+
+    const repeated = [...occurrences].sort(
+      (a,b)=>b[1].length-a[1].length
+    )[0];
+
+    $("repeatObservation").textContent = repeated[1].length>1 ?
+      "Measured in this run: "+JSON.stringify(repeated[0])+
+      " occurs "+repeated[1].length+
+      " times and has "+new Set(repeated[1]).size+
+      " distinct ECC ciphertext pairs. Caesar always gives the same output for each occurrence of that character." :
+      "This message has no repeated characters. Try a message with repeated letters to compare their ciphertexts.";
+
+    $("attackECC").disabled = false;
+    runCaesarAttack();
+  } catch(e) {
+    $("error").textContent=e.message;
+    for(const id of [
+      "eccOutput","firstStep","cipherPoints",
+      "caesarOutput","repeatObservation"
+    ]) $(id).textContent="";
+    $("frequencies").innerHTML="";
+  }
+}
+
+function runCaesarAttack() {
+  try {
+    const result=crack($("cipherInput").value);
+    $("caesarAttack").textContent =
+      "Estimated key: "+result.key+
+      "\nRecovered text: "+result.text+
+      "\nLowest χ² score: "+result.scores[0].score.toFixed(2);
+
+    $("scores").innerHTML=result.scores.map(
+      x=>row([x.key,x.score.toFixed(2)])
+    ).join("");
+  } catch(e) {
+    $("caesarAttack").textContent=e.message;
+    $("scores").innerHTML="";
+  }
+}
+
+function runECCAttack() {
+  if(!state) return;
+  const start=performance.now();
+  const d=recoverPrivate(state.Q);
+
+  $("eccAttack").textContent = d===null ?
+    "No key found in 1…1000." :
+    "Recovered private key: "+d+
+    "\nCandidates checked: "+d+
+    "\nPublic-key search time: "+
+      (performance.now()-start).toFixed(1)+" ms"+
+    "\nDecrypted using recovered key: "+
+      decrypt(state.cipher,BigInt(d));
+}
+
+function runLengths() {
+  $("lengthResults").innerHTML=lengthExperiment().map(
+    ([L,s,t])=>row([L,s+" / "+t,(100*s/t).toFixed(0)+"%"])
+  ).join("");
+}
+
+$("demo").addEventListener("submit",e=>{
+  e.preventDefault();
+  runDemo();
+});
+$("attackCaesar").addEventListener("click",runCaesarAttack);
+$("attackECC").addEventListener("click",runECCAttack);
+$("runLengths").addEventListener("click",runLengths);
+
+$("testText").textContent=testText;
+runLengths();
+runDemo();
+</script>
+</body>
+</html>
